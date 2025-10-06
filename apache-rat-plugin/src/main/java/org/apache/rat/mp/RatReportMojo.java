@@ -32,14 +32,14 @@ import java.util.Map;
 import java.util.ResourceBundle;
 
 import org.apache.maven.artifact.Artifact;
-import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.doxia.sink.Sink;
 import org.apache.maven.doxia.sink.SinkFactory;
 import org.apache.maven.doxia.sink.impl.SinkEventAttributeSet;
+import org.apache.maven.doxia.site.SiteModel;
 import org.apache.maven.doxia.site.decoration.DecorationModel;
+import org.apache.maven.doxia.siterenderer.DocumentRenderingContext;
 import org.apache.maven.doxia.siterenderer.Renderer;
 import org.apache.maven.doxia.siterenderer.RendererException;
-import org.apache.maven.doxia.siterenderer.RenderingContext;
 import org.apache.maven.doxia.siterenderer.SiteRenderingContext;
 import org.apache.maven.doxia.siterenderer.sink.SiteRendererSink;
 import org.apache.maven.doxia.tools.SiteTool;
@@ -57,6 +57,7 @@ import org.apache.rat.Reporter;
 import org.apache.rat.VersionInfo;
 import org.apache.rat.license.LicenseSetFactory.LicenseFilter;
 import org.codehaus.plexus.util.ReaderFactory;
+import org.eclipse.aether.repository.RemoteRepository;
 
 import static org.apache.maven.shared.utils.logging.MessageUtils.buffer;
 
@@ -96,8 +97,8 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
     /**
      * Remote repositories used for the project.
      */
-    @Parameter(defaultValue = "${project.remoteArtifactRepositories}", readonly = true, required = true)
-    protected List<ArtifactRepository> remoteRepositories;
+    @Parameter(defaultValue = "${project.remoteProjectRepositories}", readonly = true, required = true)
+    protected List<RemoteRepository> remoteRepositories;
 
     /**
      * SiteTool.
@@ -141,7 +142,7 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
 
         File outputDirectory = new File(getOutputDirectory());
 
-        String filename = getOutputName() + ".html";
+        String filename = getOutputName() + ".xhtml";
 
         Locale locale = Locale.getDefault();
 
@@ -151,10 +152,10 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
             // copy resources
             getSiteRenderer().copyResources(siteContext, outputDirectory);
 
-            // TODO Replace null with real value
-            RenderingContext docRenderingContext = new RenderingContext(outputDirectory, filename, null);
-
-            SiteRendererSink sink = new SiteRendererSink(docRenderingContext);
+            // Provide a real parser id for Doxia 2.x ("xhtml") instead of null
+            DocumentRenderingContext docContext =
+                    new DocumentRenderingContext(outputDirectory, filename, "xhtml5");
+            SiteRendererSink sink = new SiteRendererSink(docContext);
 
             generate(sink, null, locale);
 
@@ -165,9 +166,10 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
                 }
 
                 try (Writer writer = new OutputStreamWriter(
-                        Files.newOutputStream(new File(outputDirectory, filename).toPath()), getOutputEncoding())) {
-                    // render report
-                    getSiteRenderer().mergeDocumentIntoSite(writer, sink, siteContext);
+                        Files.newOutputStream(new File(outputDirectory, filename).toPath()),
+                        getOutputEncoding())) {
+                    // Render the page HTML with the 2.0 API
+                    getSiteRenderer().renderDocument(writer, docContext, siteContext);
                 }
             }
 
@@ -195,12 +197,33 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
 
         SiteRenderingContext context;
         try {
-            Artifact skinArtifact = siteTool.getSkinArtifactFromRepository(session.getLocalRepository(),
-                    remoteRepositories, decorationModel);
+            // Read the skin from the decoration model (decoration-level Skin)
+            org.apache.maven.doxia.site.decoration.Skin decSkin = decorationModel.getSkin();
+
+            // Convert to site-level Skin expected by SiteTool
+            org.apache.maven.doxia.site.Skin siteSkin = new org.apache.maven.doxia.site.Skin();
+            if (decSkin != null) {
+                siteSkin.setGroupId(decSkin.getGroupId());
+                siteSkin.setArtifactId(decSkin.getArtifactId());
+                siteSkin.setVersion(decSkin.getVersion());
+            }
+
+            // If no skin (or incomplete), fall back to a skin that ships the required template.
+            // maven-default-skin does not contain META-INF/maven/site.vm; Fluido does.
+            if (siteSkin.getGroupId() == null || siteSkin.getArtifactId() == null || siteSkin.getVersion() == null) {
+                siteSkin.setGroupId("org.apache.maven.skins");
+                siteSkin.setArtifactId("maven-fluido-skin");
+                siteSkin.setVersion("1.11.1");
+            }
+
+            Artifact skinArtifact = siteTool.getSkinArtifactFromRepository(
+                    session.getRepositorySession(), remoteRepositories, siteSkin);
 
             getLog().debug(buffer().a("Rendering content with ").strong(skinArtifact.getId() + " skin").a('.').build());
 
-            context = siteRenderer.createContextForSkin(skinArtifact, templateProperties, decorationModel,
+            SiteModel siteModel = new SiteModel();
+
+            context = siteRenderer.createContextForSkin(skinArtifact, templateProperties, siteModel,
                     project.getName(), locale);
         } catch (SiteToolException e) {
             throw new MavenReportException("Failed to retrieve skin artifact", e);
@@ -212,33 +235,6 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
         context.setRootDirectory(project.getBasedir());
 
         return context;
-    }
-
-    /**
-     * Generate a report.
-     *
-     * @param sink the sink to use for the generation.
-     * @param locale the wanted locale to generate the report, could be null.
-     * @throws MavenReportException if any
-     * @deprecated use {@link #generate(Sink, SinkFactory, Locale)} instead.
-     */
-    @Deprecated
-    @Override
-    public void generate(final org.codehaus.doxia.sink.Sink sink, final Locale locale) throws MavenReportException {
-        generate(sink, null, locale);
-    }
-
-    /**
-     * Generate a report.
-     *
-     * @param sink the sink to use for the generation.
-     * @param locale the wanted locale to generate the report, could be null.
-     * @throws MavenReportException if any
-     * @deprecated use {@link #generate(Sink, SinkFactory, Locale)} instead.
-     */
-    @Deprecated
-    public void generate(final Sink sink, final Locale locale) throws MavenReportException {
-        generate(sink, null, locale);
     }
 
     /**
@@ -255,16 +251,24 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
         if (!canGenerateReport()) {
             getLog().info("This report cannot be generated as part of the current build. "
                     + "The report name should be referenced in this line of output.");
-            return;
+        } else {
+            this.sink = sink;
+            this.sinkFactory = sinkFactory;
+            executeReport(locale);
+            closeReport();
         }
+    }
 
-        this.sink = sink;
-
-        this.sinkFactory = sinkFactory;
-
-        executeReport(locale);
-
-        closeReport();
+    /**
+     * Required by MavenReport (since reporting API 4.x): 2-arg generate variant.
+     *
+     * @param sink the sink to use for the generation.
+     * @param locale the locale to generate the report with.
+     * @throws MavenReportException if any error occurs.
+     */
+    @Override
+    public void generate(final Sink sink, final Locale locale) throws MavenReportException {
+        generate(sink, null, locale);
     }
 
     /**
@@ -387,7 +391,7 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
         sink.paragraph_();
 
         sink.paragraph();
-        sink.verbatim(SinkEventAttributeSet.BOXED);
+        sink.verbatim(new SinkEventAttributeSet());
         try {
             ReportConfiguration config = getConfiguration();
             config.setFrom(getDefaultsBuilder().build());
