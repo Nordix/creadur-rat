@@ -159,10 +159,16 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
             generate(sink, null, locale);
 
             // MSHARED-204: only render Doxia sink if not an external report
-            try (Writer writer = new OutputStreamWriter(
-                    Files.newOutputStream(new File(outputDirectory, filename).toPath()),
-                    getOutputEncoding())) {
-                getSiteRenderer().mergeDocumentIntoSite(writer, sink, siteContext);
+            if (!isExternalReport()) {
+                if (!outputDirectory.exists() && !outputDirectory.mkdirs()) {
+                    getLog().error("Unable to create output directory: " + outputDirectory);
+                }
+                try (Writer writer = new OutputStreamWriter(
+                        Files.newOutputStream(new File(outputDirectory, filename).toPath()),
+                        getOutputEncoding())) {
+                    getSiteRenderer().mergeDocumentIntoSite(writer, sink, siteContext);
+                }
+
             }
 
             // copy generated resources also
@@ -252,9 +258,8 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
             this.sink = sink;
             this.sinkFactory = sinkFactory;
 
-            // 👇 Add this check: only call executeReport when sink is SiteRendererSink
             if (!(sink instanceof SiteRendererSink)) {
-                // Fallback for CLI execution – generate the full output manually
+
                 generateReportManually(locale);
             } else {
                 executeReport(locale);
@@ -297,13 +302,14 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
     }
 
     /**
-     * Required by MavenReport (since reporting API 4.x): 2-arg generate variant.
+     * Generate a report.
      *
      * @param sink the sink to use for the generation.
-     * @param locale the locale to generate the report with.
-     * @throws MavenReportException if any error occurs.
+     * @param locale the wanted locale to generate the report, could be null.
+     * @throws MavenReportException if any
+     * @deprecated use {@link #generate(Sink, SinkFactory, Locale)} instead.
      */
-    @Override
+    @Deprecated
     public void generate(final Sink sink, final Locale locale) throws MavenReportException {
         generate(sink, null, locale);
     }
