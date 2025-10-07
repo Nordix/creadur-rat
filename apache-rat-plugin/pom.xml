@@ -34,7 +34,6 @@
   <properties>
     <currentVersion>${project.version}</currentVersion>
     <doxiaVersion>2.0.0</doxiaVersion>
-    <doxiaRendererVersion>2.0.0</doxiaRendererVersion>
   </properties>
   <build>
     <resources>
@@ -376,23 +375,23 @@
     </dependency>
     <dependency>
       <groupId>org.apache.maven.doxia</groupId>
-      <artifactId>doxia-decoration-model</artifactId>
-      <version>1.11.1</version>
+      <artifactId>doxia-site-model</artifactId>
+      <version>${doxiaVersion}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.maven.doxia</groupId>
       <artifactId>doxia-module-xhtml5</artifactId>
-      <version>2.0.0</version>
+      <version>${doxiaVersion}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.maven.doxia</groupId>
       <artifactId>doxia-sink-api</artifactId>
-      <version>${doxiaRendererVersion}</version>
+      <version>${doxiaVersion}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.maven.doxia</groupId>
       <artifactId>doxia-integration-tools</artifactId>
-      <version>2.0.0</version>
+      <version>${doxiaVersion}</version>
       <exclusions>
         <exclusion>
           <groupId>org.codehaus.plexus</groupId>
@@ -403,7 +402,7 @@
     <dependency>
       <groupId>org.apache.maven.doxia</groupId>
       <artifactId>doxia-site-renderer</artifactId>
-      <version>${doxiaRendererVersion}</version>
+      <version>${doxiaVersion}</version>
       <exclusions>
         <exclusion>
           <groupId>org.codehaus.plexus</groupId>
