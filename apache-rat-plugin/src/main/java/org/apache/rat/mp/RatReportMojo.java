@@ -36,7 +36,6 @@ import org.apache.maven.doxia.sink.Sink;
 import org.apache.maven.doxia.sink.SinkFactory;
 import org.apache.maven.doxia.sink.impl.SinkEventAttributeSet;
 import org.apache.maven.doxia.site.SiteModel;
-import org.apache.maven.doxia.site.decoration.DecorationModel;
 import org.apache.maven.doxia.siterenderer.DocumentRenderingContext;
 import org.apache.maven.doxia.siterenderer.Renderer;
 import org.apache.maven.doxia.siterenderer.RendererException;
@@ -160,17 +159,10 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
             generate(sink, null, locale);
 
             // MSHARED-204: only render Doxia sink if not an external report
-            if (!isExternalReport()) {
-                if (!outputDirectory.exists() && !outputDirectory.mkdirs()) {
-                    getLog().error("Unable to create output directory: " + outputDirectory);
-                }
-
-                try (Writer writer = new OutputStreamWriter(
-                        Files.newOutputStream(new File(outputDirectory, filename).toPath()),
-                        getOutputEncoding())) {
-                    // Render the page HTML with the 2.0 API
-                    getSiteRenderer().renderDocument(writer, docContext, siteContext);
-                }
+            try (Writer writer = new OutputStreamWriter(
+                    Files.newOutputStream(new File(outputDirectory, filename).toPath()),
+                    getOutputEncoding())) {
+                getSiteRenderer().mergeDocumentIntoSite(writer, sink, siteContext);
             }
 
             // copy generated resources also
@@ -182,10 +174,10 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
     }
 
     private SiteRenderingContext createSiteRenderingContext(final Locale locale) throws MavenReportException, IOException {
-        DecorationModel decorationModel = new DecorationModel();
+        SiteModel siteModel = new SiteModel();
+        SiteRenderingContext context;
 
         Map<String, Object> templateProperties = new HashMap<>();
-        // We tell the skin that we are rendering in standalone mode
         templateProperties.put("standalone", Boolean.TRUE);
         templateProperties.put("project", getProject());
         templateProperties.put("inputEncoding", getInputEncoding());
@@ -195,13 +187,14 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
             templateProperties.put((String) entry.getKey(), entry.getValue());
         }
 
-        SiteRenderingContext context;
         try {
             // Read the skin from the decoration model (decoration-level Skin)
-            org.apache.maven.doxia.site.decoration.Skin decSkin = decorationModel.getSkin();
-
-            // Convert to site-level Skin expected by SiteTool
             org.apache.maven.doxia.site.Skin siteSkin = new org.apache.maven.doxia.site.Skin();
+            siteSkin.setGroupId("org.apache.maven.skins");
+            siteSkin.setArtifactId("maven-fluido-skin");
+            siteSkin.setVersion("1.11.1");
+
+            org.apache.maven.doxia.site.Skin decSkin = siteModel.getSkin();
             if (decSkin != null) {
                 siteSkin.setGroupId(decSkin.getGroupId());
                 siteSkin.setArtifactId(decSkin.getArtifactId());
@@ -221,10 +214,13 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
 
             getLog().debug(buffer().a("Rendering content with ").strong(skinArtifact.getId() + " skin").a('.').build());
 
-            SiteModel siteModel = new SiteModel();
-
-            context = siteRenderer.createContextForSkin(skinArtifact, templateProperties, siteModel,
-                    project.getName(), locale);
+             context = siteRenderer.createContextForSkin(
+                    skinArtifact,
+                    templateProperties,
+                    siteModel,
+                    project.getName(),
+                    locale
+            );
         } catch (SiteToolException e) {
             throw new MavenReportException("Failed to retrieve skin artifact", e);
         } catch (RendererException e) {
@@ -249,13 +245,54 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
     @Override
     public void generate(final Sink sink, final SinkFactory sinkFactory, final Locale locale) throws MavenReportException {
         if (!canGenerateReport()) {
+            // This report cannot be generated as part of the current build.
             getLog().info("This report cannot be generated as part of the current build. "
                     + "The report name should be referenced in this line of output.");
         } else {
             this.sink = sink;
             this.sinkFactory = sinkFactory;
-            executeReport(locale);
+
+            // 👇 Add this check: only call executeReport when sink is SiteRendererSink
+            if (!(sink instanceof SiteRendererSink)) {
+                // Fallback for CLI execution – generate the full output manually
+                generateReportManually(locale);
+            } else {
+                executeReport(locale);
+            }
+
             closeReport();
+        }
+    }
+
+    private void generateReportManually(final Locale locale) throws MavenReportException {
+        try {
+            File outputDir = new File(getOutputDirectory());
+            String filename = getOutputName() + ".xhtml";
+
+            SiteRenderingContext siteContext = createSiteRenderingContext(locale);
+
+            if (!outputDir.exists() && !outputDir.mkdirs()) {
+                getLog().error("Unable to create output directory: " + outputDir);
+            }
+
+            DocumentRenderingContext docContext =
+                    new DocumentRenderingContext(outputDir, filename, "xhtml5");
+
+            SiteRendererSink sink = new SiteRendererSink(docContext);
+
+            this.sink = sink;
+            this.sinkFactory = null;
+
+            executeReport(locale);
+
+            try (Writer writer = new OutputStreamWriter(
+                    Files.newOutputStream(new File(outputDir, filename).toPath()),
+                    getOutputEncoding())) {
+                getSiteRenderer().mergeDocumentIntoSite(writer, sink, siteContext);
+            }
+
+        } catch (IOException | RendererException e) {
+            throw new MavenReportException("Failed to render RAT report manually", e);
         }
     }
 
