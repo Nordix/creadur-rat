@@ -201,7 +201,7 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
                 siteSkin = new org.apache.maven.doxia.site.Skin();
                 siteSkin.setGroupId("org.apache.maven.skins");
                 siteSkin.setArtifactId("maven-fluido-skin");
-                siteSkin.setVersion("1.11.1");
+                siteSkin.setVersion("2.1.0");
             }
 
             Artifact skinArtifact = siteTool.getSkinArtifactFromRepository(
