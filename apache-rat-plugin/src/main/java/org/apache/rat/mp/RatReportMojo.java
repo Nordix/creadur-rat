@@ -151,7 +151,7 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
             // copy resources
             getSiteRenderer().copyResources(siteContext, outputDirectory);
 
-            // Provide a real parser id for Doxia 2.x ("xhtml") instead of null
+            // TODO Replace null with real value
             DocumentRenderingContext docContext =
                     new DocumentRenderingContext(outputDirectory, filename, "xhtml5");
             SiteRendererSink sink = new SiteRendererSink(docContext);
@@ -166,6 +166,7 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
                 try (Writer writer = new OutputStreamWriter(
                         Files.newOutputStream(new File(outputDirectory, filename).toPath()),
                         getOutputEncoding())) {
+                    // render report
                     getSiteRenderer().mergeDocumentIntoSite(writer, sink, siteContext);
                 }
 
@@ -184,6 +185,7 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
         SiteRenderingContext context;
 
         Map<String, Object> templateProperties = new HashMap<>();
+        // We tell the skin that we are rendering in standalone mode
         templateProperties.put("standalone", Boolean.TRUE);
         templateProperties.put("project", getProject());
         templateProperties.put("inputEncoding", getInputEncoding());
@@ -194,10 +196,9 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
         }
 
         try {
-            // Read the skin from the decoration model (decoration-level Skin)
+
             org.apache.maven.doxia.site.Skin siteSkin = siteModel.getSkin();
             if (siteSkin == null || siteSkin.getGroupId() == null || siteSkin.getArtifactId() == null || siteSkin.getVersion() == null) {
-                // fallback to default skin if any of the components are missing
                 siteSkin = new org.apache.maven.doxia.site.Skin();
                 siteSkin.setGroupId("org.apache.maven.skins");
                 siteSkin.setArtifactId("maven-fluido-skin");
