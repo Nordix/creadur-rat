@@ -195,21 +195,10 @@ public class RatReportMojo extends AbstractRatMojo implements MavenMultiPageRepo
 
         try {
             // Read the skin from the decoration model (decoration-level Skin)
-            org.apache.maven.doxia.site.Skin siteSkin = new org.apache.maven.doxia.site.Skin();
-            siteSkin.setGroupId("org.apache.maven.skins");
-            siteSkin.setArtifactId("maven-fluido-skin");
-            siteSkin.setVersion("1.11.1");
-
-            org.apache.maven.doxia.site.Skin decSkin = siteModel.getSkin();
-            if (decSkin != null) {
-                siteSkin.setGroupId(decSkin.getGroupId());
-                siteSkin.setArtifactId(decSkin.getArtifactId());
-                siteSkin.setVersion(decSkin.getVersion());
-            }
-
-            // If no skin (or incomplete), fall back to a skin that ships the required template.
-            // maven-default-skin does not contain META-INF/maven/site.vm; Fluido does.
-            if (siteSkin.getGroupId() == null || siteSkin.getArtifactId() == null || siteSkin.getVersion() == null) {
+            org.apache.maven.doxia.site.Skin siteSkin = siteModel.getSkin();
+            if (siteSkin == null || siteSkin.getGroupId() == null || siteSkin.getArtifactId() == null || siteSkin.getVersion() == null) {
+                // fallback to default skin if any of the components are missing
+                siteSkin = new org.apache.maven.doxia.site.Skin();
                 siteSkin.setGroupId("org.apache.maven.skins");
                 siteSkin.setArtifactId("maven-fluido-skin");
                 siteSkin.setVersion("1.11.1");
